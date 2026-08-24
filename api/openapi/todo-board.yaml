@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: Todo Board API
+  version: 1.0.0
+  description: >-
+    A single shared counter.
+
+paths:
+  /counter/get:
+    get:
+      operationId: getCount
+      tags: [TdbCounter]
+      summary: Read the current count.
+      responses:
+        "200":
+          description: The current count.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TdbCountReply" }
+
+  /counter/increment:
+    post:
+      operationId: incrementCount
+      tags: [TdbCounter]
+      summary: Add one and return the new count.
+      responses:
+        "200":
+          description: The count after incrementing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TdbCountReply" }
+
+  /counter/decrement:
+    post:
+      operationId: decrementCount
+      tags: [TdbCounter]
+      summary: Subtract one and return the new count.
+      responses:
+        "200":
+          description: The count after decrementing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TdbCountReply" }
+
+components:
+  schemas:
+    TdbCountReply:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: The counter's value.
