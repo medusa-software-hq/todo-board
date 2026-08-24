@@ -1,0 +1,18 @@
+version: '3'
+
+includes:
+  infra:
+    taskfile: infra/Taskfile.yml
+    dir: infra
+
+  config:
+    taskfile: config/Taskfile.yml
+    dir: config
+
+  github:
+    taskfile: github.Taskfile.yml
+    dir: .
+
+  gradleRoot:
+    taskfile: gradle.Taskfile.yml
+    dir: .

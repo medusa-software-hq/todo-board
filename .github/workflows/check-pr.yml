@@ -1,0 +1,24 @@
+name: Check PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-gh-workflows:
+    name: GitHub Workflows
+    uses: ./.github/workflows/check-gh-workflows.yml
+
+  check-config:
+    name: Config
+    uses: ./.github/workflows/check-config.yml
+
+  check-root-infra:
+    name: Root infra
+    uses: ./.github/workflows/check-root-infra.yml
+
+  check-backend-impl:
+    name: Backend implementation
+    uses: ./.github/workflows/check-backend-impl.yml

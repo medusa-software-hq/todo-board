@@ -1,0 +1,12 @@
+version: '3'
+
+.kotlinSources: &kotlinSources
+  - '**/*.kt'
+  - '**/*.kts'
+
+tasks:
+  fixFormatting:
+    desc: Fix Kotlin formatting across every module
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew ktfmtFormat

@@ -1,0 +1,30 @@
+naming:
+  # Allow underscores in the package names
+  PackageNaming:
+    active: true
+    packagePattern: '[a-z][A-Za-z0-9_]*(\.[a-z][A-Za-z0-9_]*)*'
+
+  # Force top-level properties to be camelCase
+  TopLevelPropertyNaming:
+    active: true
+    constantPattern: '[a-z][A-Za-z0-9]*'
+
+  # Force object properties to be camelCase
+  ObjectPropertyNaming:
+    active: true
+    constantPattern: '[a-z][A-Za-z0-9]*'
+    propertyPattern: '[a-z][A-Za-z0-9]*'
+    privatePropertyPattern: '(_)?[a-z][A-Za-z0-9]*'
+
+style:
+  # Raise the number of allowed returns
+  ReturnCount:
+    active: true
+    max: 12
+    excludeGuardClauses: true
+
+  # Raise the number of allowed throws
+  ThrowsCount:
+    active: true
+    max: 12
+    excludeGuardClauses: true
