@@ -2,6 +2,7 @@ package software.medusa.todo_board.backend.service
 
 import io.micronaut.context.ApplicationContext
 import io.micronaut.runtime.server.EmbeddedServer
+import software.medusa.todo_board.api.server.ProperRawCounterController
 
 /** Service starter. */
 data object TdbServiceStarter {
@@ -11,7 +12,10 @@ data object TdbServiceStarter {
   fun start(): TdbServiceHandle {
     val counterStore = TdbInMemoryCounterStore()
 
-    val counterController = TdbProperCounterController(counterStore = counterStore)
+    val counterController =
+        ProperRawCounterController(
+            apiHandler = TdbProperApiHandler(counterStore = counterStore),
+        )
 
     val applicationContext =
         ApplicationContext.builder()

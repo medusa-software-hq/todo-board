@@ -6,7 +6,11 @@ plugins {
 rootProject.name = "todo-board"
 
 include(
+    ":core",
+    ":api",
+    ":api:client:raw",
     ":api:client",
+    ":api:server",
     ":backend",
     ":backend:service",
     ":backend:local-stack",
