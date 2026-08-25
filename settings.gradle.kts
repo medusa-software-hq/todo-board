@@ -6,8 +6,15 @@ plugins {
 rootProject.name = "todo-board"
 
 include(
+    ":core",
+    ":api",
+    ":api:client:raw",
     ":api:client",
+    ":api:server",
     ":backend",
     ":backend:service",
     ":backend:local-stack",
+
+    // The frontend, and the launcher that runs it against a backend stack.
+    ":web-app:dev-launcher",
 )

@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  install:
+    desc: Install dependencies
+    sources:
+      - package.json
+      - yarn.lock
+    generates:
+      - node_modules/.yarn-state.yml
+    cmds:
+      # `--immutable` ensures a clean install based on the lockfile
+      - corepack yarn install --immutable
+
+  api:
+    desc: Generate the API client types from the OpenAPI contract
+    deps: [install]
+    sources:
+      - ../../api/openapi/todo-board.yaml
+    generates:
+      - src/gen/sdk.gen.ts
+    cmds:
+      - corepack yarn openapi-ts -i ../../api/openapi/todo-board.yaml -o src/gen
+      # Generated code is the generator's business; TypeScript has no per-directory escape.
+      - node scripts/exempt-generated.mjs
+
+  checkFormatting:
+    desc: Check package formatting
+    deps: [install]
+    cmds:
+      - corepack yarn oxfmt --check "**/*.{ts,tsx,css}"
+
+  fixFormatting:
+    desc: Fix package formatting
+    deps: [install]
+    cmds:
+      - corepack yarn oxfmt --write "**/*.{ts,tsx,css}"
+
+  lint:
+    desc: Lint the package
+    deps: [install, api]
+    cmds:
+      # `--type-aware` is where the rules that need the type checker live, and they are the ones
+      # that catch conditions which cannot be false.
+      - corepack yarn oxlint --type-aware
+
+  typecheck:
+    desc: Type check the package
+    deps: [install, api]
+    cmds:
+      - corepack yarn tsc --noEmit -p tsconfig.app.json
+
+  build:
+    desc: Build the package
+    deps: [install, api, typecheck]
+    cmds:
+      - corepack yarn vite build
+
+  clean:
+    desc: Remove generated and build artifacts
+    cmds:
+      - rm -rf dist src/gen

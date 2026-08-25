@@ -1,21 +1,44 @@
 package software.medusa.todo_board.backend.service
 
-/** Stores a single, global counter. */
+import software.medusa.todo_board.core.TdbCounterId
+
+/**
+ * Stores counters, each one identified on its own.
+ *
+ * The read and write operations answer `null` for an id no counter has, rather than creating one: a
+ * counter exists because someone created it, and a typo should not quietly become a counter.
+ */
 interface TdbCounterStore {
-  /** @return The current value of the counter (initially: 0). */
-  fun getCurrent(): Long
+  /**
+   * Creates a counter.
+   *
+   * @return The new counter's id.
+   */
+  fun create(): TdbCounterId
 
   /**
-   * Increments the counter.
+   * Deletes the counter [counterId] identifies.
    *
-   * @return The incremented value.
+   * @return Whether there was such a counter.
    */
-  fun increment(): Long
+  fun delete(counterId: TdbCounterId): Boolean
 
   /**
-   * Decrements the counter.
-   *
-   * @return The decremented value.
+   * @return The current value of the counter [counterId] identifies, or `null` if there is none.
    */
-  fun decrement(): Long
+  fun getCurrent(counterId: TdbCounterId): Long?
+
+  /**
+   * Increments the counter [counterId] identifies.
+   *
+   * @return The incremented value, or `null` if there is no such counter.
+   */
+  fun increment(counterId: TdbCounterId): Long?
+
+  /**
+   * Decrements the counter [counterId] identifies.
+   *
+   * @return The decremented value, or `null` if there is no such counter.
+   */
+  fun decrement(counterId: TdbCounterId): Long?
 }

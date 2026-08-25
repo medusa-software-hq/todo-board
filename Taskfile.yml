@@ -17,7 +17,19 @@ includes:
     taskfile: gradle.Taskfile.yml
     dir: .
 
+  web-app:
+    taskfile: web-app/Taskfile.yml
+    dir: web-app
+
 tasks:
+  dev:
+    desc: Run the whole app locally — the backend stack, and Vite pointed at it
+    deps:
+      - web-app:frontend:api
+    cmds:
+      - ./gradlew :web-app:dev-launcher:run --console=plain
+    interactive: true
+
   desc: Apply all automatic fixes
   fixAll:
     deps:
@@ -25,3 +37,4 @@ tasks:
       - infra:fixFormatting
       - github:fixLint
       - gradleRoot:fixFormatting
+      - web-app:fixFormatting

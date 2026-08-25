@@ -3,48 +3,101 @@ info:
   title: Todo Board API
   version: 1.0.0
   description: >-
-    A single shared counter.
+    Counters, each one created and deleted on its own.
 
 paths:
-  /counter/get:
+  /counters:
+    post:
+      operationId: createCounter
+      tags: [RawCounter]
+      summary: Create a counter, starting at zero.
+      responses:
+        "200":
+          description: The counter that was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RawCounterCreatedReply" }
+
+  /counters/{counterId}:
+    delete:
+      operationId: deleteCounter
+      tags: [RawCounter]
+      summary: Delete a counter.
+      parameters:
+        - $ref: "#/components/parameters/CounterId"
+      responses:
+        "204":
+          description: The counter is gone.
+        "404":
+          description: No counter has that id.
+
+  /counters/{counterId}/get:
     get:
       operationId: getCount
-      tags: [TdbCounter]
-      summary: Read the current count.
+      tags: [RawCounter]
+      summary: Read a counter's current count.
+      parameters:
+        - $ref: "#/components/parameters/CounterId"
       responses:
         "200":
           description: The current count.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TdbCountReply" }
+              schema: { $ref: "#/components/schemas/RawCountReply" }
+        "404":
+          description: No counter has that id.
 
-  /counter/increment:
+  /counters/{counterId}/increment:
     post:
       operationId: incrementCount
-      tags: [TdbCounter]
-      summary: Add one and return the new count.
+      tags: [RawCounter]
+      summary: Add one to a counter and return its new count.
+      parameters:
+        - $ref: "#/components/parameters/CounterId"
       responses:
         "200":
           description: The count after incrementing.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TdbCountReply" }
+              schema: { $ref: "#/components/schemas/RawCountReply" }
+        "404":
+          description: No counter has that id.
 
-  /counter/decrement:
+  /counters/{counterId}/decrement:
     post:
       operationId: decrementCount
-      tags: [TdbCounter]
-      summary: Subtract one and return the new count.
+      tags: [RawCounter]
+      summary: Subtract one from a counter and return its new count.
+      parameters:
+        - $ref: "#/components/parameters/CounterId"
       responses:
         "200":
           description: The count after decrementing.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TdbCountReply" }
+              schema: { $ref: "#/components/schemas/RawCountReply" }
+        "404":
+          description: No counter has that id.
 
 components:
+  parameters:
+    CounterId:
+      name: counterId
+      in: path
+      required: true
+      description: The counter's id.
+      schema: { type: string }
+
   schemas:
-    TdbCountReply:
+    RawCounterCreatedReply:
+      type: object
+      required: [counterId]
+      properties:
+        counterId:
+          type: string
+          description: The new counter's id.
+
+    RawCountReply:
       type: object
       required: [count]
       properties:
