@@ -1,0 +1,23 @@
+version: '3'
+
+includes:
+  frontend:
+    taskfile: frontend/Taskfile.yml
+    dir: frontend
+
+tasks:
+  checkFormatting:
+    desc: Check formatting
+    deps: [frontend:checkFormatting]
+
+  fixFormatting:
+    desc: Fix formatting
+    deps: [frontend:fixFormatting]
+
+  lint:
+    desc: Lint the app sources
+    deps: [frontend:lint]
+
+  analyze:
+    desc: Type check and build the frontend
+    deps: [frontend:typecheck, frontend:build]

@@ -14,4 +14,7 @@ include(
     ":backend",
     ":backend:service",
     ":backend:local-stack",
+
+    // The frontend, and the launcher that runs it against a backend stack.
+    ":web-app:dev-launcher",
 )
