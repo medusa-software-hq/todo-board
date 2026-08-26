@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Container, Group, Stack, Text, Title } from '@mantine/core';
 import { useCallback, useState } from 'react';
+import { assertNever } from './assertNever.ts';
 import {
   TdbApiError,
   TdbCounterResponseKinds,
@@ -7,7 +8,6 @@ import {
   type TdbApiErrorKind,
   TdbApiErrorKinds,
 } from './TdbApiClient.ts';
-import { assertNever } from './assertNever.ts';
 
 /** Which way a counter is being moved. */
 type TdbCounterDirection = 'up' | 'down';

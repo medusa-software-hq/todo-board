@@ -2,8 +2,8 @@ import '@mantine/core/styles.css';
 import { MantineProvider } from '@mantine/core';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createTdbApiClient } from './TdbApiClient.ts';
 import App from './App.tsx';
+import { createTdbApiClient } from './TdbApiClient.ts';
 
 /**
  * The service, on this page's own origin.
