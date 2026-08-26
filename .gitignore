@@ -10,3 +10,6 @@ build/
 
 # JVM heap dumps
 *.hprof
+
+# Terraform
+.terraform/

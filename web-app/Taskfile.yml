@@ -21,3 +21,11 @@ tasks:
   analyze:
     desc: Type check and build the frontend
     deps: [frontend:typecheck, frontend:build]
+
+  build-image:
+    desc: Build the web app's container image
+    # The build context is the repository root: the contract the client is generated from lives
+    # outside `web-app`.
+    dir: ..
+    cmds:
+      - docker build -f web-app/Dockerfile .

@@ -31,7 +31,7 @@ fun main() {
             .directory(frontendDir)
             .inheritIO()
             // Not a `VITE_` name: this is for the dev server to proxy to, not for the bundle.
-            .apply { environment()["TODO_BOARD_API_URL"] = apiUrl }
+            .apply { environment()["API_URL"] = apiUrl }
             .start()
 
     // Ctrl-C kills this process, and would otherwise leave Vite behind holding its port.

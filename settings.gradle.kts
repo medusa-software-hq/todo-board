@@ -14,7 +14,13 @@ include(
     ":backend",
     ":backend:service",
     ":backend:local-stack",
+    // How the Service is started on Cloud Run.
+    ":backend:service:cloud-run",
 
     // The frontend, and the launcher that runs it against a backend stack.
     ":web-app:dev-launcher",
 )
+
+// `entries/` groups a module's deployables on disk, where it reads well. It carries no meaning in a
+// dependency coordinate, so it is kept out of the Gradle path.
+project(":backend:service:cloud-run").projectDir = file("backend/service/entries/cloud-run")

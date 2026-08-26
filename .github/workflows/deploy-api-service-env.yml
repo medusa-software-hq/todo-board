@@ -1,0 +1,61 @@
+name: Deploy API service (per environment)
+
+# Deploying one already-built image to one environment. Called twice by `deploy-api-service`, with the same
+# `image_ref` both times.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: The environment to deploy to.
+        required: true
+        type: string
+      image_ref:
+        description: The image to deploy. Built once, upstream.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NO_COLOR: 1
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ vars.GCP_API_RUN_SERVICE_NAME }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
+            --image="${{ inputs.image_ref }}" \
+            --quiet
+
+      - name: Report the service URL
+        run: |
+          service_url="$(gcloud run services describe "${{ vars.GCP_API_RUN_SERVICE_NAME }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
+            --format='value(status.url)')"
+          {
+            echo "## API service — ${{ inputs.environment }}"
+            echo ""
+            echo "- Service URL: [$service_url]($service_url)"
+            echo "- Image: \`${{ inputs.image_ref }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

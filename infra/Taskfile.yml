@@ -10,3 +10,19 @@ tasks:
     sources: *terraformSources
     cmds:
       - terraform fmt -recursive
+
+  checkFormatting:
+    desc: Check Terraform formatting
+    sources: *terraformSources
+    cmds:
+      - terraform fmt -recursive -check
+
+  validate:
+    desc: Validate every Terraform stack
+    cmds:
+      - cd shared && terraform init -backend=false -input=false && terraform validate
+      # Every environment, not just one. `main` has no `default` workspace, so validating it means
+      # naming one — and naming only the first would miss anything whose shape differs between
+      # them, which validation resolves per workspace rather than once.
+      - for: ['prod', 'staging']
+        cmd: cd main && terraform init -backend=false -input=false && TF_WORKSPACE={{.ITEM}} terraform validate

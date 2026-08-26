@@ -1,0 +1,95 @@
+name: Deploy API service
+
+# One image, built once, deployed to staging and then to production. That is what the shared
+# Artifact Registry is for: promoting means running the artifact staging proved, and an image built
+# a second time is a different artifact however identical the source was.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "core/**"
+      - "backend/**"
+      - "gradle/**"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+jobs:
+  build:
+    name: Build & push image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      image_ref: ${{ steps.image.outputs.image_ref }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Resolve the image ref
+        id: image
+        # Repository-level variables: one registry for every environment, which is the point.
+        run: echo "image_ref=${{ vars.GCP_AR_REPO_ENDPOINT }}/api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_AR_REPO_HOSTNAME }} --quiet
+
+      - uses: actions/setup-java@v5.7.0
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v6.3.0
+
+      - name: Build the distribution
+        run: ./gradlew :backend:service:cloud-run:installDist
+
+      - name: Build and push the image
+        run: |
+          docker build \
+            -f backend/service/entries/cloud-run/Dockerfile \
+            -t "${{ steps.image.outputs.image_ref }}" \
+            backend/service/entries/cloud-run
+          docker push "${{ steps.image.outputs.image_ref }}"
+
+  deploy-staging:
+    name: Deploy staging
+    needs: build
+    uses: ./.github/workflows/deploy-api-service-env.yml
+    with:
+      environment: staging
+      image_ref: ${{ needs.build.outputs.image_ref }}
+    permissions:
+      contents: read
+      id-token: write
+
+  deploy-prod:
+    name: Deploy prod (promote)
+    needs: deploy-staging
+    uses: ./.github/workflows/deploy-api-service-env.yml
+    with:
+      environment: prod
+      image_ref: ${{ needs.build.outputs.image_ref }}
+    permissions:
+      contents: read
+      id-token: write

@@ -1,0 +1,66 @@
+name: Apply backend infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/infra/**"
+      - "config/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: 1.15
+
+  TF_INPUT: false
+  TF_CLI_ARGS: -no-color
+  NO_COLOR: 1
+
+jobs:
+  apply:
+    name: Apply Terraform (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+
+    # One job per environment. `environment:` is what makes `vars.*` resolve to that environment's
+    # values; the Terraform workspace is what keeps their states apart. Serialized with staging
+    # first, and fail-fast, so a broken apply never reaches production.
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        environment: [staging, prod]
+
+    environment: ${{ matrix.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ~> ${{ env.TERRAFORM_VERSION }}
+
+      - name: Apply Terraform configuration
+        working-directory: backend/infra
+        env:
+          # Published by root infra when it created the project; read here rather than through a
+          # second stack's state.
+          TF_VAR_gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          terraform init
+          terraform workspace select -or-create=true ${{ matrix.environment }}
+          terraform apply -auto-approve

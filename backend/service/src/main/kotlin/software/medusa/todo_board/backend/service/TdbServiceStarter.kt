@@ -6,10 +6,8 @@ import software.medusa.todo_board.api.server.ProperRawCounterController
 
 /** Service starter. */
 data object TdbServiceStarter {
-  private val anyFreePort = -1
-
-  /** Starts the Service on an automatically allocated port. */
-  fun start(): TdbServiceHandle {
+  /** Starts the Service on [port]. */
+  fun start(port: Int): TdbServiceHandle {
     val counterStore = TdbInMemoryCounterStore()
 
     val counterController =
@@ -24,7 +22,7 @@ data object TdbServiceStarter {
             // Fail the start, rather than whichever request arrives first.
             .eagerInitSingletons(true)
             .singletons(counterController)
-            .properties(mapOf("micronaut.server.port" to anyFreePort))
+            .properties(mapOf("micronaut.server.port" to port))
             .start()
 
     val server = applicationContext.getBean(EmbeddedServer::class.java).start()

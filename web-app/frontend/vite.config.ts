@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
  * learns a port and never crosses an origin. Not a `VITE_` name, because nothing in the bundle
  * should be able to see it.
  */
-const backendUrl = process.env['TODO_BOARD_API_URL'];
+const backendUrl = process.env['API_URL'];
 
 export default defineConfig({
   plugins: [react()],
