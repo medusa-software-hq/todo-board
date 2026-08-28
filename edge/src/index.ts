@@ -83,6 +83,13 @@ function minterFor(serviceAccountKeyJson: string): GoogleIdTokenMinter {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Everything the deploy was supposed to supply, taken once and before anything else. A Worker
+    // missing any of it is misconfigured whichever path a request happens to take, and finding that
+    // out on the first request is better than finding it out on the first request of one kind.
+    const webTarget = env.WEB_TARGET ?? panic('WEB_TARGET is not set');
+    const apiTarget = env.API_TARGET ?? panic('API_TARGET is not set');
+    const serviceAccountKey = env.GCP_SA_KEY ?? panic('GCP_SA_KEY is not set');
+
     const url = new URL(request.url);
 
     // Exactly `/api`, or something beneath it — never `/apifoo`.
@@ -90,21 +97,16 @@ export default {
 
     try {
       if (isApi) {
-        const apiTarget = env.API_TARGET ?? panic('API_TARGET is not set');
-        const serviceAccountKey = env.GCP_SA_KEY ?? panic('GCP_SA_KEY is not set');
-
         const idToken = await minterFor(serviceAccountKey).idTokenFor(apiTarget);
 
         return await forward(request, apiTarget, { pathPrefix: apiPathPrefix, idToken });
       }
 
-      const webTarget = env.WEB_TARGET ?? panic('WEB_TARGET is not set');
-
       return await forward(request, webTarget);
     } catch (cause) {
-      // Everything ends here: an origin that would not answer, and a deploy that left something
-      // out. The caller is told the same thing either way, and which it was is in the log.
-      console.error('the request could not be served', cause);
+      // Only an origin that would not answer reaches here. A deploy that left something out
+      // panicked above and never got this far, which is the difference we want to keep.
+      console.error('forwarding failed', cause);
 
       return upstreamFailure();
     }
