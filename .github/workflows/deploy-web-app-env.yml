@@ -39,9 +39,13 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
           service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
 
+      # `update`, not `deploy`: `gcloud run deploy` creates the service when it is absent, which
+      # lets a deploy race ahead of the Terraform that owns it and bring one into being without the
+      # service account, environment or ingress that stack specifies. A deploy changes the image of
+      # a service that already exists, or it fails.
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy "${{ vars.GCP_WEB_RUN_SERVICE_NAME }}" \
+          gcloud run services update "${{ vars.GCP_WEB_RUN_SERVICE_NAME }}" \
             --project="${{ vars.GCP_PROJECT_ID }}" \
             --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
             --image="${{ inputs.image_ref }}" \
