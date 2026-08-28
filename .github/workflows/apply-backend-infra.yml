@@ -60,6 +60,8 @@ jobs:
           # Published by root infra when it created the project; read here rather than through a
           # second stack's state.
           TF_VAR_gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          # Whose calls the API accepts. Published by the same apply that created the account.
+          TF_VAR_gcp_edge_invoker_sa_email: ${{ vars.GCP_EDGE_INVOKER_SA_EMAIL }}
         run: |
           terraform init
           terraform workspace select -or-create=true ${{ matrix.environment }}

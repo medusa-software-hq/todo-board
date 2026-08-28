@@ -8,19 +8,8 @@
 :{$PORT} {
 	encode gzip
 
-	# The half the Vite dev server plays locally: the page calls its own origin, and this forwards
-	# it on. `handle_path` strips the prefix, so the API sees the paths its contract describes.
-	handle_path /api/* {
-		reverse_proxy {$API_URL} {
-			# Cloud Run routes by Host, so it has to be the upstream's rather than this app's.
-			header_up Host {upstream_hostport}
-		}
-	}
-
-	handle {
-		root * /srv
-		# One page, many routes: anything that is not a file it has is the app itself.
-		try_files {path} /index.html
-		file_server
-	}
+	root * /srv
+	# One page, many routes: anything that is not a file it has is the app itself.
+	try_files {path} /index.html
+	file_server
 }

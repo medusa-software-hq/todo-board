@@ -1,6 +1,8 @@
 # The organization forbids IAM members outside its own domain, which is the right default and the
-# wrong one for a service the public is meant to reach: `allUsers` on the Cloud Run services is
-# refused with "one or more users named in the policy do not belong to a permitted customer".
+# wrong one for a service the public is meant to reach: `allUsers` on the web app's Cloud Run
+# service is refused with "one or more users named in the policy do not belong to a permitted
+# customer". The API is no longer one of those services — only the edge may call it — so this is
+# here for the web app alone, and can go with it once the edge serves the files itself.
 #
 # Relaxed for this project alone, and here rather than in the stacks that grant the bindings:
 # loosening an organization policy is exactly the kind of privilege root infra exists to hold and
