@@ -85,7 +85,10 @@ jobs:
 
   deploy-prod:
     name: Deploy prod (promote)
-    needs: deploy-staging
+    # `build` as well as `deploy-staging`: ordering comes from `deploy-staging`, but a job can only
+    # read the outputs of the jobs it names, and `needs.build.outputs.image_ref` is silently empty
+    # otherwise — which reaches Cloud Run as `--image=""`.
+    needs: [build, deploy-staging]
     uses: ./.github/workflows/deploy-api-service-env.yml
     with:
       environment: prod
