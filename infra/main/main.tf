@@ -75,6 +75,17 @@ provider "google" {
   region  = module.config.gcp_primary_location
 }
 
+# The Organization Policy API bills its quota to a project, and under a person's own credentials
+# there is none to bill unless one is named. Only the org policy override below uses this.
+provider "google" {
+  alias   = "quota_override"
+  project = module.config.gcp_meta_project_id
+  region  = module.config.gcp_primary_location
+
+  user_project_override = true
+  billing_project       = local.gcp_project_id
+}
+
 # Outputs
 
 output "environment" {
