@@ -1,0 +1,79 @@
+name: Deploy edge
+
+# One Worker per environment, published by wrangler. Unlike the Cloud Run services there is no
+# image to promote: the artifact is the script, and wrangler uploads it per environment from the
+# same commit.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "edge/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NO_COLOR: 1
+
+jobs:
+  deploy:
+    name: Deploy (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    # Staging first, and fail-fast, so a Worker that breaks staging never reaches production.
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        environment: [staging, prod]
+
+    environment: ${{ matrix.environment }}
+
+    defaults:
+      run:
+        working-directory: edge
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: edge/.nvmrc
+
+      - name: Install dependencies
+        run: corepack yarn install --immutable
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      # Read back rather than written down: a Cloud Run URL is generated when the service is
+      # created, so the deploy asks the service where it is.
+      - name: Resolve the web service URL
+        id: target
+        run: |
+          web_target="$(gcloud run services describe "${{ vars.GCP_WEB_RUN_SERVICE_NAME }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
+            --format='value(status.url)')"
+          echo "web_target=$web_target" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the Worker
+        env:
+          # wrangler reads `CLOUDFLARE_API_TOKEN`; the secret is named for what the token may do,
+          # which is more than the DNS token every other deploy uses.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKER_ADMIN_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          corepack yarn wrangler deploy --env ${{ matrix.environment }} \
+            --var WEB_TARGET:"${{ steps.target.outputs.web_target }}"

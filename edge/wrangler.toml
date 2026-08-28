@@ -1,0 +1,23 @@
+name = "todo-board-edge"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# Nothing here is deployed without an environment: the two differ by which hostname they answer on,
+# and a default would be one of them wearing the other's name.
+#
+# `WEB_TARGET` is deliberately absent. It is a Cloud Run URL, generated when the service was
+# created, so the deploy reads it back from the service and passes `--var`. Locally, pass your own:
+#
+#   task edge:dev -- --var WEB_TARGET:http://localhost:8099
+
+[env.staging]
+name = "todo-board-edge-staging"
+routes = [
+  { pattern = "todo-board-v1-staging.medusa.software", custom_domain = true },
+]
+
+[env.prod]
+name = "todo-board-edge-prod"
+routes = [
+  { pattern = "todo-board-v1-prod.medusa.software", custom_domain = true },
+]

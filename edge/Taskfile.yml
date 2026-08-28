@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  install:
+    desc: Install dependencies
+    sources:
+      - package.json
+      - yarn.lock
+    generates:
+      - node_modules/.yarn-state.yml
+    cmds:
+      - corepack yarn install --immutable
+
+  checkFormatting:
+    desc: Check package formatting
+    deps: [install]
+    cmds:
+      - corepack yarn oxfmt --check "**/*.ts"
+
+  fixFormatting:
+    desc: Fix package formatting
+    deps: [install]
+    cmds:
+      - corepack yarn oxfmt --write "**/*.ts"
+
+  lint:
+    desc: Lint the package
+    deps: [install]
+    cmds:
+      - corepack yarn oxlint --type-aware
+
+  typecheck:
+    desc: Type check the package
+    deps: [install]
+    cmds:
+      - corepack yarn tsc --noEmit
+
+  dev:
+    desc: Run the edge locally, forwarding to a target of your choosing
+    deps: [install]
+    cmds:
+      - corepack yarn wrangler dev --env staging {{.CLI_ARGS}}
+    interactive: true
