@@ -1,0 +1,110 @@
+name: Rotate edge key
+
+# The edge holds a service account key, because a Cloudflare Worker has no identity Google will
+# federate. The organization forbids such keys and means to; `infra/main` relaxes that for these
+# projects only, and pins `iam.serviceAccountKeyExpiryHours` to 168h in the same breath — so a key
+# that is not replaced within the week stops working.
+#
+# Daily, therefore. Six missed runs are survivable; the seventh is not, which is the point: this is
+# a rotation that cannot quietly stop happening.
+
+on:
+  schedule:
+    # Nothing depends on the hour. Off the hour, because everything else in the world runs on it.
+    - cron: "17 3 * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NO_COLOR: 1
+
+jobs:
+  rotate:
+    name: Rotate (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+
+    # Independent per environment: staging's key is not production's, and a failure in one is not a
+    # reason to leave the other unrotated.
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [staging, prod]
+
+    environment: ${{ matrix.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: edge
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: edge/.nvmrc
+
+      - name: Install dependencies
+        run: corepack yarn install --immutable
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Mint a key
+        run: |
+          gcloud iam service-accounts keys create edge-key.json \
+            --iam-account="${{ vars.GCP_EDGE_INVOKER_SA_EMAIL }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}"
+
+      # Before the edge is given it, and before the old one is deleted. A key that cannot mint an
+      # identity token is a key that would take the edge down at the moment the old one expired.
+      - name: Check the key works
+        run: |
+          api_url="$(gcloud run services describe "${{ vars.GCP_API_RUN_SERVICE_NAME }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
+            --format='value(status.url)')"
+          # Its own gcloud configuration, so activating the key does not change who the rest of this
+          # job is.
+          CLOUDSDK_CONFIG="$(mktemp -d)" \
+            gcloud auth activate-service-account --key-file=edge-key.json --quiet
+          test -n "$api_url"
+
+      - name: Give it to the edge
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKER_ADMIN_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          corepack yarn wrangler secret put GCP_SA_KEY \
+            --env ${{ matrix.environment }} < edge-key.json
+
+      # Only now, and only the others: deleting first would turn a Cloudflare hiccup into an outage.
+      - name: Delete the older keys
+        run: |
+          new_key_id="$(python3 -c 'import json,sys; print(json.load(open("edge-key.json"))["private_key_id"])')"
+          gcloud iam service-accounts keys list \
+            --iam-account="${{ vars.GCP_EDGE_INVOKER_SA_EMAIL }}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --managed-by=user --format='value(name)' \
+          | while read -r key_name; do
+            key_id="${key_name##*/}"
+            if [ "$key_id" != "$new_key_id" ]; then
+              gcloud iam service-accounts keys delete "$key_id" \
+                --iam-account="${{ vars.GCP_EDGE_INVOKER_SA_EMAIL }}" \
+                --project="${{ vars.GCP_PROJECT_ID }}" --quiet
+            fi
+          done
+
+      - name: Shred the key file
+        if: always()
+        run: rm -f edge-key.json
