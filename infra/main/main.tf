@@ -53,9 +53,16 @@ locals {
       # A letter rather than the word, so a derived name stays short enough to read at a glance:
       # `todo-board-p-1a2b`.
       environment_code = "p"
+
+      # The OAuth client this environment signs people in with. Made by hand in the console, as in
+      # Counter and Farm: an OAuth client is one of the few things there is no good way to create
+      # from here, and one of the few whose id is public once made.
+      google_client_id = "TODO.apps.googleusercontent.com"
     }
     staging = {
       environment_code = "s"
+
+      google_client_id = "TODO.apps.googleusercontent.com"
     }
   }
 
@@ -64,6 +71,7 @@ locals {
   # There is no environment but these: a workspace that is not one of them has no code, and the
   # lookup failing is the whole of what needs to happen.
   environment_code = local.environments[local.environment].environment_code
+  google_client_id = local.environments[local.environment].google_client_id
 }
 
 # Providers
