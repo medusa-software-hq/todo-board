@@ -3,7 +3,8 @@
 # Reached directly rather than through API Gateway: the gateway is configured from an OpenAPI 2.0
 # document and this project's contract is 3.0, so putting one in front would mean a second,
 # downgraded copy of the contract to keep in step with the first. Nothing yet needs what a gateway
-# offers over this — no API keys, no quotas, no auth.
+# offers over this — no API keys and no quotas — and the one thing it would have been asked for,
+# turning away a caller with no business here, happens at the edge instead.
 
 resource "google_service_account" "api" {
   project      = var.gcp_project_id
@@ -54,13 +55,15 @@ resource "google_cloud_run_v2_service" "api" {
 
 }
 
-# Public, because the web app talks to it and there is nothing to protect yet.
-resource "google_cloud_run_v2_service_iam_member" "api_public_invoker" {
+# The edge, and nothing else. A caller without a token is turned away by Cloud Run before anything
+# in this project runs, which is the point of putting auth at the edge at all: knocking repeatedly
+# costs the one knocking, and never us a container.
+resource "google_cloud_run_v2_service_iam_member" "api_edge_invoker" {
   project  = google_cloud_run_v2_service.api.project
   location = google_cloud_run_v2_service.api.location
   name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:${var.gcp_edge_invoker_sa_email}"
 }
 
 # Outputs

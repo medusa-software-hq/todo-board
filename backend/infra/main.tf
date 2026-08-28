@@ -37,6 +37,13 @@ variable "gcp_project_id" {
   type        = string
 }
 
+# Who is allowed to call the API. Published by root infra alongside the project id and handed over
+# the same way: the account exists because root infra made it, so that stays the one copy.
+variable "gcp_edge_invoker_sa_email" {
+  description = "The service account the edge calls the API as."
+  type        = string
+}
+
 # Providers
 
 provider "google" {
