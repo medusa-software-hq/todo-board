@@ -1,4 +1,5 @@
 import { GoogleIdTokenMinter, type ServiceAccountKey } from './googleIdToken.ts';
+import { panic } from './panic.ts';
 
 /**
  * The edge in front of Todo Board.
@@ -89,26 +90,21 @@ export default {
 
     try {
       if (isApi) {
-        if (!env.API_TARGET || !env.GCP_SA_KEY) {
-          console.error('API_TARGET or GCP_SA_KEY is not set');
+        const apiTarget = env.API_TARGET ?? panic('API_TARGET is not set');
+        const serviceAccountKey = env.GCP_SA_KEY ?? panic('GCP_SA_KEY is not set');
 
-          return upstreamFailure();
-        }
+        const idToken = await minterFor(serviceAccountKey).idTokenFor(apiTarget);
 
-        const idToken = await minterFor(env.GCP_SA_KEY).idTokenFor(env.API_TARGET);
-
-        return await forward(request, env.API_TARGET, { pathPrefix: apiPathPrefix, idToken });
+        return await forward(request, apiTarget, { pathPrefix: apiPathPrefix, idToken });
       }
 
-      if (!env.WEB_TARGET) {
-        console.error('WEB_TARGET is not set');
+      const webTarget = env.WEB_TARGET ?? panic('WEB_TARGET is not set');
 
-        return upstreamFailure();
-      }
-
-      return await forward(request, env.WEB_TARGET);
+      return await forward(request, webTarget);
     } catch (cause) {
-      console.error('forwarding failed', cause);
+      // Everything ends here: an origin that would not answer, and a deploy that left something
+      // out. The caller is told the same thing either way, and which it was is in the log.
+      console.error('the request could not be served', cause);
 
       return upstreamFailure();
     }
