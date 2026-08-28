@@ -1,8 +1,10 @@
 name: Deploy web app
 
-# One image, built once, deployed to staging and then to production — see `deploy-api-service`. It is
-# the same image in both, and it can be: it serves files and knows nothing about which API it belongs
-# to, because it no longer talks to one.
+# Staging, then production — see `deploy-api-service` for the same shape.
+#
+# Unlike the API, the web app is built once per environment rather than once in total: the bundle
+# carries the OAuth client it signs people in with, and that client belongs to one environment. What
+# is promoted here is the order, not the artifact.
 
 on:
   push:
@@ -16,69 +18,22 @@ on:
 permissions:
   contents: read
 
-env:
-  NO_COLOR: 1
-
 jobs:
-  build:
-    name: Build & push image
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      id-token: write
-
-    outputs:
-      image_ref: ${{ steps.image.outputs.image_ref }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3.0.0
-        with:
-          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
-          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
-
-      - name: Resolve the image ref
-        id: image
-        run: echo "image_ref=${{ vars.GCP_AR_REPO_ENDPOINT }}/web:${{ github.sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ vars.GCP_AR_REPO_HOSTNAME }} --quiet
-
-      - name: Build and push the image
-        # The context is the repository root: the frontend is built inside the image, from the same
-        # contract the service is generated from.
-        run: |
-          docker build \
-            -f web-app/Dockerfile \
-            -t "${{ steps.image.outputs.image_ref }}" \
-            .
-          docker push "${{ steps.image.outputs.image_ref }}"
-
   deploy-staging:
     name: Deploy staging
-    needs: build
     uses: ./.github/workflows/deploy-web-app-env.yml
     with:
       environment: staging
-      image_ref: ${{ needs.build.outputs.image_ref }}
     permissions:
       contents: read
       id-token: write
 
   deploy-prod:
-    name: Deploy prod (promote)
-    # `build` as well as `deploy-staging`: ordering comes from `deploy-staging`, but a job can only
-    # read the outputs of the jobs it names, and `needs.build.outputs.image_ref` is silently empty
-    # otherwise — which reaches Cloud Run as `--image=""`.
-    needs: [build, deploy-staging]
+    name: Deploy prod
+    needs: deploy-staging
     uses: ./.github/workflows/deploy-web-app-env.yml
     with:
       environment: prod
-      image_ref: ${{ needs.build.outputs.image_ref }}
     permissions:
       contents: read
       id-token: write

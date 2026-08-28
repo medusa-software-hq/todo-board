@@ -1,13 +1,25 @@
 import { Alert, Button, Card, Container, Group, Stack, Text, Title } from '@mantine/core';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { assertNever } from './assertNever.ts';
 import {
+  createTdbApiClient,
   TdbApiError,
   TdbCounterResponseKinds,
   type TdbApiClient,
   type TdbApiErrorKind,
   TdbApiErrorKinds,
 } from './TdbApiClient.ts';
+import { TdbAuthStatuses, useTdbAuth } from './TdbAuthContext.ts';
+import { TdbSignInWall } from './TdbSignInWall.tsx';
+
+/**
+ * The service, on this page's own origin.
+ *
+ * The dev server proxies it to wherever the launcher started the backend, and in production the
+ * edge splits it off before anything else sees it. Either way the app crosses no origin and names
+ * no port — so there is nothing here to configure per environment.
+ */
+const apiUrl = '/api';
 
 /** Which way a counter is being moved. */
 type TdbCounterDirection = 'up' | 'down';
@@ -55,6 +67,8 @@ function describeApiError(errorKind: TdbApiErrorKind): string {
       return 'The service failed to handle that.';
     case TdbApiErrorKinds.incompatibility:
       return 'The service answered something this page cannot read.';
+    case TdbApiErrorKinds.unauthorized:
+      return 'Your session has ended. Sign in again to continue.';
   }
 }
 
@@ -64,10 +78,62 @@ function describeApiError(errorKind: TdbApiErrorKind): string {
  * The API has no way to list them, so a counter is only reachable while its id is held here — a
  * reload starts over. That is the API's shape showing through rather than a decision taken here.
  */
-export default function App({ apiClient }: { apiClient: TdbApiClient }) {
+export default function App() {
+  const { state } = useTdbAuth();
+
+  switch (state.status) {
+    case TdbAuthStatuses.pending:
+      // Google has been asked and has not answered. Showing the wall now would show it to somebody
+      // who is about to turn out to be signed in already.
+      return null;
+    case TdbAuthStatuses.signedOut:
+      return <TdbSignInWall />;
+    case TdbAuthStatuses.signedIn:
+      return <TdbCounters token={state.token} />;
+    case TdbAuthStatuses.notRequired:
+      return <TdbCounters token={null} />;
+    default:
+      return assertNever(state);
+  }
+}
+
+/**
+ * The app itself, calling the API as whoever [token] belongs to — or as nobody, where there is
+ * nobody to be.
+ */
+function TdbCounters({ token }: { token: string | null }) {
+  const { forgetToken } = useTdbAuth();
   const [counters, setCounters] = useState<Counter[]>([]);
   const [apiErrorKind, setApiErrorKind] = useState<TdbApiErrorKind | null>(null);
   const [missingCounter, setMissingCounter] = useState(false);
+
+  // Read at the moment of the call rather than captured when the client was made: a refreshed token
+  // is a new string, and a client built around the old one would present it until the page reloads.
+  const currentToken = useRef(token);
+
+  useEffect(() => {
+    currentToken.current = token;
+  }, [token]);
+
+  const apiClient: TdbApiClient = useMemo(
+    // The token is read when a call is made, which is never during a render — that is the whole
+    // point of asking for it per call rather than holding one.
+    // oxlint-disable-next-line react/refs
+    () => createTdbApiClient(apiUrl, () => currentToken.current),
+    [],
+  );
+
+  /** Where a failed call ends up. A refused token is also something to act on, not just report. */
+  const handleApiError = useCallback(
+    (errorKind: TdbApiErrorKind) => {
+      if (errorKind === TdbApiErrorKinds.unauthorized) {
+        forgetToken();
+      }
+
+      setApiErrorKind(errorKind);
+    },
+    [forgetToken],
+  );
 
   const forget = useCallback((counterId: string) => {
     setCounters((current) => current.filter((counter) => counter.counterId !== counterId));
@@ -99,9 +165,9 @@ export default function App({ apiClient }: { apiClient: TdbApiClient }) {
           setMissingCounter(false);
           setCounters((current) => [...current, { counterId, count: 0 }]);
         },
-        setApiErrorKind,
+        handleApiError,
       ),
-    [apiClient],
+    [apiClient, handleApiError],
   );
 
   const move = useCallback(
@@ -123,9 +189,9 @@ export default function App({ apiClient }: { apiClient: TdbApiClient }) {
               assertNever(response);
           }
         },
-        setApiErrorKind,
+        handleApiError,
       ),
-    [apiClient, record, dropMissing],
+    [apiClient, record, dropMissing, handleApiError],
   );
 
   const refresh = useCallback(
@@ -144,9 +210,9 @@ export default function App({ apiClient }: { apiClient: TdbApiClient }) {
               assertNever(response);
           }
         },
-        setApiErrorKind,
+        handleApiError,
       ),
-    [apiClient, record, dropMissing],
+    [apiClient, record, dropMissing, handleApiError],
   );
 
   const remove = useCallback(
@@ -159,9 +225,9 @@ export default function App({ apiClient }: { apiClient: TdbApiClient }) {
           setMissingCounter(false);
           forget(counterId);
         },
-        setApiErrorKind,
+        handleApiError,
       ),
-    [apiClient, forget],
+    [apiClient, forget, handleApiError],
   );
 
   return (
