@@ -23,8 +23,29 @@ const googleIssuers = new Set(['accounts.google.com', 'https://accounts.google.c
 /** How far apart our clock and Google's may be before we call a fresh token expired. */
 const clockSkewSeconds = 60;
 
-/** How long a fetched key set is reused. Google rotates keys daily and publishes the next early. */
-const jwksLifetimeSeconds = 3600;
+/**
+ * How long a fetched key set is reused, when the answer does not say.
+ *
+ * It normally does: the endpoint sends `Cache-Control: max-age`, counted down to a fixed expiry
+ * some hours out. Google's own guidance is to reuse the keys until then, so that is what we do, and
+ * this is only what to do if the header is missing or unreadable.
+ */
+const fallbackKeySetLifetimeSeconds = 3600;
+
+/** Never reuse a key set for less than this, however short an answer claims to be good for. */
+const minimumKeySetLifetimeSeconds = 60;
+
+/**
+ * How long an unknown key id must wait before it may cost another fetch.
+ *
+ * Several keys are published at once and long before they sign anything, so a signing key we have
+ * never seen is not how a rotation normally reaches us — it is how a made-up `kid` does. Without a
+ * bound, every junk token would buy an unauthenticated caller one request from us to Google: an
+ * amplifier, and a way to get us rate-limited into refusing people who are real. So the fetch is
+ * kept — a rotation faster than we expect should not lock anyone out — and capped at one per
+ * window, no matter how many strangers ask.
+ */
+const unknownKeyIdRefetchCooldownSeconds = 300;
 
 /** Who the caller is. Everything else the token says about them is not ours to keep. */
 export interface GoogleUser {
@@ -70,6 +91,7 @@ interface GoogleIdTokenClaims {
 export class GoogleUserTokenVerifier {
   private keys: Map<string, CryptoKey> | undefined;
   private keysUsableUntil = 0;
+  private unknownKeyIdFetchAllowedAt = 0;
 
   constructor(
     private readonly clientId: string,
@@ -144,11 +166,13 @@ export class GoogleUserTokenVerifier {
       return false;
     }
 
-    // A key id we do not know is the ordinary way a rotation looks from here, so the set is fetched
-    // again before the token is disbelieved — once, because the second miss is not a rotation.
-    let key = (await this.keySet(false)).get(kid);
+    let key = (await this.keySet()).get(kid);
 
-    key ??= (await this.keySet(true)).get(kid);
+    // Not there. Ours may be the older picture — but so may the id be invented, so this is allowed
+    // to cost a fetch only once in a while. See the cooldown.
+    if (key === undefined && this.mayFetchForUnknownKeyId()) {
+      key = (await this.fetchKeySet()).get(kid);
+    }
 
     if (key === undefined) {
       console.warn('rejecting a token: no such key id', kid);
@@ -231,14 +255,37 @@ export class GoogleUserTokenVerifier {
     return { subject: claims.sub, email: claims.email };
   }
 
-  /** Google's signing keys, by key id. Fetched again when stale, or when [force] says to. */
-  private async keySet(force: boolean): Promise<Map<string, CryptoKey>> {
+  /**
+   * Whether an unknown key id may cause a fetch right now, counting this one if it may.
+   *
+   * Asked rather than told: the answer is also the decision, so two strangers arriving together
+   * cannot both be the one that is allowed through.
+   */
+  private mayFetchForUnknownKeyId(): boolean {
+    const nowSeconds = Date.now() / 1000;
+
+    if (nowSeconds < this.unknownKeyIdFetchAllowedAt) {
+      return false;
+    }
+
+    this.unknownKeyIdFetchAllowedAt = nowSeconds + unknownKeyIdRefetchCooldownSeconds;
+
+    return true;
+  }
+
+  /** Google's signing keys, by key id — the ones we hold, until they are too old to hold. */
+  private async keySet(): Promise<Map<string, CryptoKey>> {
     const cached = this.keys;
 
-    if (!force && cached !== undefined && this.keysUsableUntil > Date.now() / 1000) {
+    if (cached !== undefined && this.keysUsableUntil > Date.now() / 1000) {
       return cached;
     }
 
+    return this.fetchKeySet();
+  }
+
+  /** Google's signing keys, asked for again whatever we are holding. */
+  private async fetchKeySet(): Promise<Map<string, CryptoKey>> {
     const response = await fetch(googleJwksUri);
 
     if (!response.ok) {
@@ -272,10 +319,21 @@ export class GoogleUserTokenVerifier {
     }
 
     this.keys = keys;
-    this.keysUsableUntil = Date.now() / 1000 + jwksLifetimeSeconds;
+    this.keysUsableUntil = Date.now() / 1000 + reusableForSeconds(response);
 
     return keys;
   }
+}
+
+/** How long [response] says it may be reused, within what we are willing to believe. */
+function reusableForSeconds(response: Response): number {
+  const maxAge = /max-age=(\d+)/.exec(response.headers.get('cache-control') ?? '');
+
+  if (maxAge === null) {
+    return fallbackKeySetLifetimeSeconds;
+  }
+
+  return Math.max(Number(maxAge[1]), minimumKeySetLifetimeSeconds);
 }
 
 /** [encoded] as the JSON it should be, or `null` if it is not that. */

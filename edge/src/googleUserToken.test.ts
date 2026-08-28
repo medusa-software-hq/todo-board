@@ -81,10 +81,23 @@ async function mintToken(
   return `${signingInput}.${base64Url(new Uint8Array(signature))}`;
 }
 
-/** Stands in for Google's key set endpoint, and counts how often it was asked. */
-function serveKeySet(): { calls: () => number } {
+/**
+ * Stands in for Google's key set endpoint, and counts how often it was asked.
+ *
+ * [maxAgeSeconds] is the real endpoint's way of saying how long its answer keeps: omitted here to
+ * play one that does not say.
+ */
+function serveKeySet(maxAgeSeconds?: number): { calls: () => number } {
   const fetchMock = mock.method(globalThis, 'fetch', () =>
-    Promise.resolve(new Response(JSON.stringify({ keys: [publicJwk] }), { status: 200 })),
+    Promise.resolve(
+      new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers:
+          maxAgeSeconds === undefined
+            ? {}
+            : { 'cache-control': `public, max-age=${maxAgeSeconds}, must-revalidate` },
+      }),
+    ),
   );
 
   return { calls: () => fetchMock.mock.callCount() };
@@ -95,6 +108,7 @@ describe('GoogleUserTokenVerifier', () => {
 
   beforeEach(() => {
     mock.restoreAll();
+    mock.timers.reset();
     verifier = new GoogleUserTokenVerifier(clientId, hostedDomain);
   });
 
@@ -207,10 +221,36 @@ describe('GoogleUserTokenVerifier', () => {
     assert.equal(keySet.calls(), 1);
   });
 
-  // A key id nobody has heard of is what a rotation looks like from here, so the set is worth
-  // fetching again before the token is disbelieved — and exactly once, or an unknown id would be a
-  // way to make us call Google as often as somebody liked.
-  it('looks again for an unknown key id, and only once', async () => {
+  it('keeps the set for as long as the answer says, and no longer', async () => {
+    const keySet = serveKeySet(120);
+    mock.timers.enable({ apis: ['Date'] });
+
+    await verifier.verify(await mintToken(validClaims()));
+
+    mock.timers.tick(119_000);
+    await verifier.verify(await mintToken(validClaims()));
+    assert.equal(keySet.calls(), 1);
+
+    mock.timers.tick(2_000);
+    await verifier.verify(await mintToken(validClaims()));
+    assert.equal(keySet.calls(), 2);
+  });
+
+  it('will not hold a set for a moment, however brief the answer claims to be good for', async () => {
+    const keySet = serveKeySet(0);
+    mock.timers.enable({ apis: ['Date'] });
+
+    await verifier.verify(await mintToken(validClaims()));
+
+    mock.timers.tick(59_000);
+    await verifier.verify(await mintToken(validClaims()));
+
+    assert.equal(keySet.calls(), 1);
+  });
+
+  // A rotation faster than the published keys led us to expect would show up as a key id we do not
+  // have, and looking again is how somebody real gets in anyway.
+  it('looks again for an unknown key id', async () => {
     const keySet = serveKeySet();
 
     assert.equal(
@@ -218,5 +258,33 @@ describe('GoogleUserTokenVerifier', () => {
       null,
     );
     assert.equal(keySet.calls(), 2);
+  });
+
+  // The same path, from the other side: an invented `kid` is the cheap way to ask, so it must not
+  // buy a request to Google per token. One per window, and the flood pays for nothing.
+  it('does not let a made-up key id buy a fetch per token', async () => {
+    const keySet = serveKeySet();
+    mock.timers.enable({ apis: ['Date'] });
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await verifier.verify(
+        await mintToken(validClaims(), { alg: 'RS256', kid: `made-up-${attempt}` }),
+      );
+      mock.timers.tick(1_000);
+    }
+
+    // One for the set itself, one for the first unknown id, and nothing bought by the other 19.
+    assert.equal(keySet.calls(), 2);
+  });
+
+  it('looks again once the window has passed', async () => {
+    const keySet = serveKeySet();
+    mock.timers.enable({ apis: ['Date'] });
+
+    await verifier.verify(await mintToken(validClaims(), { alg: 'RS256', kid: 'unknown' }));
+    mock.timers.tick(301_000);
+    await verifier.verify(await mintToken(validClaims(), { alg: 'RS256', kid: 'unknown' }));
+
+    assert.equal(keySet.calls(), 3);
   });
 });
