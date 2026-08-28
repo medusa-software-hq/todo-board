@@ -80,4 +80,6 @@ jobs:
         run: |
           corepack yarn wrangler deploy --env ${{ matrix.environment }} \
             --var WEB_TARGET:"${{ steps.target.outputs.web }}" \
-            --var API_TARGET:"${{ steps.target.outputs.api }}"
+            --var API_TARGET:"${{ steps.target.outputs.api }}" \
+            --var GOOGLE_CLIENT_ID:"${{ vars.GOOGLE_CLIENT_ID }}" \
+            --var GOOGLE_ALLOWED_DOMAIN:"${{ vars.GOOGLE_ALLOWED_DOMAIN }}"
