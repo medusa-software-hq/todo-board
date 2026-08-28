@@ -87,15 +87,20 @@ async function mintToken(
  * [maxAgeSeconds] is the real endpoint's way of saying how long its answer keeps: omitted here to
  * play one that does not say.
  */
-function serveKeySet(maxAgeSeconds?: number): { calls: () => number } {
+function serveKeySet(freshness?: { maxAgeSeconds: number; ageSeconds?: number }): {
+  calls: () => number;
+} {
   const fetchMock = mock.method(globalThis, 'fetch', () =>
     Promise.resolve(
       new Response(JSON.stringify({ keys: [publicJwk] }), {
         status: 200,
         headers:
-          maxAgeSeconds === undefined
+          freshness === undefined
             ? {}
-            : { 'cache-control': `public, max-age=${maxAgeSeconds}, must-revalidate` },
+            : {
+                'cache-control': `public, max-age=${freshness.maxAgeSeconds}, must-revalidate`,
+                ...(freshness.ageSeconds === undefined ? {} : { age: `${freshness.ageSeconds}` }),
+              },
       }),
     ),
   );
@@ -221,13 +226,14 @@ describe('GoogleUserTokenVerifier', () => {
     assert.equal(keySet.calls(), 1);
   });
 
-  it('keeps the set for as long as the answer says, and no longer', async () => {
-    const keySet = serveKeySet(120);
+  // 900 seconds of freshness, less the 300 the refresh margin holds back.
+  it('keeps the set for as long as the answer says, less the margin', async () => {
+    const keySet = serveKeySet({ maxAgeSeconds: 900 });
     mock.timers.enable({ apis: ['Date'] });
 
     await verifier.verify(await mintToken(validClaims()));
 
-    mock.timers.tick(119_000);
+    mock.timers.tick(599_000);
     await verifier.verify(await mintToken(validClaims()));
     assert.equal(keySet.calls(), 1);
 
@@ -236,8 +242,22 @@ describe('GoogleUserTokenVerifier', () => {
     assert.equal(keySet.calls(), 2);
   });
 
+  // What a shared cache already spent is not ours to spend again: 900 of freshness, 600 of it gone
+  // before the answer arrived, 300 held back — so there is nothing left and the next look refetches.
+  it('does not count freshness a cache has already spent', async () => {
+    const keySet = serveKeySet({ maxAgeSeconds: 900, ageSeconds: 600 });
+    mock.timers.enable({ apis: ['Date'] });
+
+    await verifier.verify(await mintToken(validClaims()));
+
+    mock.timers.tick(61_000);
+    await verifier.verify(await mintToken(validClaims()));
+
+    assert.equal(keySet.calls(), 2);
+  });
+
   it('will not hold a set for a moment, however brief the answer claims to be good for', async () => {
-    const keySet = serveKeySet(0);
+    const keySet = serveKeySet({ maxAgeSeconds: 0 });
     mock.timers.enable({ apis: ['Date'] });
 
     await verifier.verify(await mintToken(validClaims()));
@@ -248,43 +268,23 @@ describe('GoogleUserTokenVerifier', () => {
     assert.equal(keySet.calls(), 1);
   });
 
-  // A rotation faster than the published keys led us to expect would show up as a key id we do not
-  // have, and looking again is how somebody real gets in anyway.
-  it('looks again for an unknown key id', async () => {
-    const keySet = serveKeySet();
-
-    assert.equal(
-      await verifier.verify(await mintToken(validClaims(), { alg: 'RS256', kid: 'rotated' })),
-      null,
-    );
-    assert.equal(keySet.calls(), 2);
-  });
-
-  // The same path, from the other side: an invented `kid` is the cheap way to ask, so it must not
-  // buy a request to Google per token. One per window, and the flood pays for nothing.
-  it('does not let a made-up key id buy a fetch per token', async () => {
+  // Google publishes a key long before it signs with it, and its own clients reject an unheard-of
+  // key id rather than look again. So must this — otherwise an invented `kid` is a way for anyone
+  // to spend our requests to Google, and a rate limit earned that way refuses people who are real.
+  it('rejects an unknown key id without asking Google again', async () => {
     const keySet = serveKeySet();
     mock.timers.enable({ apis: ['Date'] });
 
     for (let attempt = 0; attempt < 20; attempt++) {
-      await verifier.verify(
-        await mintToken(validClaims(), { alg: 'RS256', kid: `made-up-${attempt}` }),
+      assert.equal(
+        await verifier.verify(
+          await mintToken(validClaims(), { alg: 'RS256', kid: `made-up-${attempt}` }),
+        ),
+        null,
       );
       mock.timers.tick(1_000);
     }
 
-    // One for the set itself, one for the first unknown id, and nothing bought by the other 19.
-    assert.equal(keySet.calls(), 2);
-  });
-
-  it('looks again once the window has passed', async () => {
-    const keySet = serveKeySet();
-    mock.timers.enable({ apis: ['Date'] });
-
-    await verifier.verify(await mintToken(validClaims(), { alg: 'RS256', kid: 'unknown' }));
-    mock.timers.tick(301_000);
-    await verifier.verify(await mintToken(validClaims(), { alg: 'RS256', kid: 'unknown' }));
-
-    assert.equal(keySet.calls(), 3);
+    assert.equal(keySet.calls(), 1);
   });
 });

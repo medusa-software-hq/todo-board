@@ -36,16 +36,12 @@ const fallbackKeySetLifetimeSeconds = 3600;
 const minimumKeySetLifetimeSeconds = 60;
 
 /**
- * How long an unknown key id must wait before it may cost another fetch.
+ * Fetch this long before the set we hold stops being fresh.
  *
- * Several keys are published at once and long before they sign anything, so a signing key we have
- * never seen is not how a rotation normally reaches us — it is how a made-up `kid` does. Without a
- * bound, every junk token would buy an unauthenticated caller one request from us to Google: an
- * amplifier, and a way to get us rate-limited into refusing people who are real. So the fetch is
- * kept — a rotation faster than we expect should not lock anyone out — and capped at one per
- * window, no matter how many strangers ask.
+ * Google's own Java client keeps the same margin, and for the same reason: keys that expire while a
+ * request is in flight are keys nobody can be verified against.
  */
-const unknownKeyIdRefetchCooldownSeconds = 300;
+const refreshMarginSeconds = 300;
 
 /** Who the caller is. Everything else the token says about them is not ours to keep. */
 export interface GoogleUser {
@@ -91,7 +87,6 @@ interface GoogleIdTokenClaims {
 export class GoogleUserTokenVerifier {
   private keys: Map<string, CryptoKey> | undefined;
   private keysUsableUntil = 0;
-  private unknownKeyIdFetchAllowedAt = 0;
 
   constructor(
     private readonly clientId: string,
@@ -166,13 +161,11 @@ export class GoogleUserTokenVerifier {
       return false;
     }
 
-    let key = (await this.keySet()).get(kid);
-
-    // Not there. Ours may be the older picture — but so may the id be invented, so this is allowed
-    // to cost a fetch only once in a while. See the cooldown.
-    if (key === undefined && this.mayFetchForUnknownKeyId()) {
-      key = (await this.fetchKeySet()).get(kid);
-    }
+    // A key id we do not hold is a token we cannot verify, and that is the end of it. Google
+    // publishes a key long before it signs anything with it, so this is not what a rotation looks
+    // like reaching us — it is what an invented `kid` looks like, and fetching on the strength of
+    // one would let anybody spend our requests to Google. Google's own clients reject here too.
+    const key = (await this.keySet()).get(kid);
 
     if (key === undefined) {
       console.warn('rejecting a token: no such key id', kid);
@@ -255,24 +248,6 @@ export class GoogleUserTokenVerifier {
     return { subject: claims.sub, email: claims.email };
   }
 
-  /**
-   * Whether an unknown key id may cause a fetch right now, counting this one if it may.
-   *
-   * Asked rather than told: the answer is also the decision, so two strangers arriving together
-   * cannot both be the one that is allowed through.
-   */
-  private mayFetchForUnknownKeyId(): boolean {
-    const nowSeconds = Date.now() / 1000;
-
-    if (nowSeconds < this.unknownKeyIdFetchAllowedAt) {
-      return false;
-    }
-
-    this.unknownKeyIdFetchAllowedAt = nowSeconds + unknownKeyIdRefetchCooldownSeconds;
-
-    return true;
-  }
-
   /** Google's signing keys, by key id — the ones we hold, until they are too old to hold. */
   private async keySet(): Promise<Map<string, CryptoKey>> {
     const cached = this.keys;
@@ -325,7 +300,12 @@ export class GoogleUserTokenVerifier {
   }
 }
 
-/** How long [response] says it may be reused, within what we are willing to believe. */
+/**
+ * How long [response] says it may be reused, within what we are willing to believe.
+ *
+ * `Age` is what a shared cache has already spent of that time before the answer reached us, so it
+ * comes off the top — as it does in Google's Java client, which is where the arithmetic is from.
+ */
 function reusableForSeconds(response: Response): number {
   const maxAge = /max-age=(\d+)/.exec(response.headers.get('cache-control') ?? '');
 
@@ -333,7 +313,10 @@ function reusableForSeconds(response: Response): number {
     return fallbackKeySetLifetimeSeconds;
   }
 
-  return Math.max(Number(maxAge[1]), minimumKeySetLifetimeSeconds);
+  const age = Number(response.headers.get('age') ?? 0);
+  const remaining = Number(maxAge[1]) - (Number.isFinite(age) ? age : 0) - refreshMarginSeconds;
+
+  return Math.max(remaining, minimumKeySetLifetimeSeconds);
 }
 
 /** [encoded] as the JSON it should be, or `null` if it is not that. */
