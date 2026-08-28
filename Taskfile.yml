@@ -21,6 +21,10 @@ includes:
     taskfile: web-app/Taskfile.yml
     dir: web-app
 
+  edge:
+    taskfile: edge/Taskfile.yml
+    dir: edge
+
 tasks:
   dev:
     desc: Run the whole app locally — the backend stack, and Vite pointed at it
@@ -38,3 +42,4 @@ tasks:
       - github:fixLint
       - gradleRoot:fixFormatting
       - web-app:fixFormatting
+      - edge:fixFormatting

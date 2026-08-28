@@ -1,0 +1,44 @@
+name: Check edge implementation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  NO_COLOR: 1
+
+jobs:
+  check-edge:
+    name: Check edge
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: edge
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: edge/.nvmrc
+
+      - name: Install dependencies
+        run: corepack yarn install --immutable
+
+      - name: Run `oxfmt`
+        run: corepack yarn oxfmt --check "**/*.ts"
+
+      - name: Run `oxlint`
+        run: corepack yarn oxlint --type-aware
+
+      - name: Run `tsc`
+        run: corepack yarn tsc --noEmit
+
+      # Catches a `wrangler.toml` that does not describe a deployable Worker, which nothing else
+      # here would notice until a deploy failed.
+      - name: Check the Worker builds
+        run: corepack yarn wrangler deploy --env staging --dry-run --outdir dist
