@@ -1,8 +1,8 @@
 # The web app, on Cloud Run.
 #
-# It serves the built frontend and forwards `/api` to this environment's API service, which is what
-# lets the page call its own origin. The Vite dev server plays the same part locally, so the browser
-# crosses no origin in either place and the API needs no CORS policy at all.
+# It serves the built frontend and nothing else. `/api` never arrives here: the edge Worker splits
+# the two before either reaches Cloud Run, so the page still calls its own origin and the API still
+# needs no CORS policy — the join just happens a step earlier now. Locally, Vite plays that part.
 
 resource "google_service_account" "web" {
   project      = var.gcp_project_id
@@ -28,13 +28,6 @@ resource "google_cloud_run_v2_service" "web" {
 
       ports {
         container_port = 8080
-      }
-
-      # Where to forward `/api`. Set here rather than baked into the image, so the same image can be
-      # deployed to staging and then to production without being rebuilt.
-      env {
-        name  = "API_URL"
-        value = local.api_service_url
       }
     }
   }

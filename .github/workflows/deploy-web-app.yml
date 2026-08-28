@@ -1,8 +1,8 @@
 name: Deploy web app
 
-# One image, built once, deployed to staging and then to production — see `deploy-api-service`. Nothing
-# about which API it talks to is baked in: that is `API_URL`, which the web app's Terraform sets per
-# environment, so the same image is the one both of them run.
+# One image, built once, deployed to staging and then to production — see `deploy-api-service`. It is
+# the same image in both, and it can be: it serves files and knows nothing about which API it belongs
+# to, because it no longer talks to one.
 
 on:
   push:
