@@ -20,3 +20,11 @@ resource "github_actions_environment_variable" "gcp_project_id" {
   variable_name = "GCP_PROJECT_ID"
   value         = local.gcp_project_id
 }
+
+# Which account the edge calls as, so the rotation workflow knows whose key to mint.
+resource "github_actions_environment_variable" "gcp_edge_invoker_sa_email" {
+  repository    = data.github_repository.this.name
+  environment   = github_repository_environment.this.environment
+  variable_name = "GCP_EDGE_INVOKER_SA_EMAIL"
+  value         = google_service_account.edge_invoker.email
+}

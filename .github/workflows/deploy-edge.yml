@@ -58,15 +58,18 @@ jobs:
           service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
 
       # Read back rather than written down: a Cloud Run URL is generated when the service is
-      # created, so the deploy asks the service where it is.
-      - name: Resolve the web service URL
+      # created, so the deploy asks each service where it is.
+      - name: Resolve the service URLs
         id: target
         run: |
-          web_target="$(gcloud run services describe "${{ vars.GCP_WEB_RUN_SERVICE_NAME }}" \
-            --project="${{ vars.GCP_PROJECT_ID }}" \
-            --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
-            --format='value(status.url)')"
-          echo "web_target=$web_target" >> "$GITHUB_OUTPUT"
+          describe() {
+            gcloud run services describe "$1" \
+              --project="${{ vars.GCP_PROJECT_ID }}" \
+              --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
+              --format='value(status.url)'
+          }
+          echo "web=$(describe "${{ vars.GCP_WEB_RUN_SERVICE_NAME }}")" >> "$GITHUB_OUTPUT"
+          echo "api=$(describe "${{ vars.GCP_API_RUN_SERVICE_NAME }}")" >> "$GITHUB_OUTPUT"
 
       - name: Publish the Worker
         env:
@@ -76,4 +79,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           corepack yarn wrangler deploy --env ${{ matrix.environment }} \
-            --var WEB_TARGET:"${{ steps.target.outputs.web_target }}"
+            --var WEB_TARGET:"${{ steps.target.outputs.web }}" \
+            --var API_TARGET:"${{ steps.target.outputs.api }}"
