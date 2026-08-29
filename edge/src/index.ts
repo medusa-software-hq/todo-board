@@ -110,24 +110,43 @@ async function forward(
 }
 
 /**
- * Built once per isolate rather than per request, so the key is parsed and the token minted as
- * rarely as the platform allows.
+ * What has been built from an earlier request's environment, and what it was built from.
+ *
+ * Built on first use rather than at the top of the file because `env` arrives with a request and
+ * exists nowhere else; kept afterwards because an isolate serves many requests, and parsing a key
+ * or fetching Google's again for each of them would be work done for nothing.
+ *
+ * Kept *with what it was made of*, though, and not merely kept. An isolate is only ever handed one
+ * environment today — changing a secret deploys a new version, and its requests go to isolates that
+ * start empty — so a plain `??=` would be right by circumstance. It would also be a function that
+ * takes arguments and, after the first call, pays no attention to them: wrong the moment the
+ * circumstance changes, and wrong silently, minting with a key that has since been deleted or
+ * checking tokens against a client that has been replaced.
  */
-let minter: GoogleIdTokenMinter | undefined;
+let minter: { readonly builtFrom: string; readonly value: GoogleIdTokenMinter } | undefined;
 
 function minterFor(serviceAccountKeyJson: string): GoogleIdTokenMinter {
-  minter ??= new GoogleIdTokenMinter(JSON.parse(serviceAccountKeyJson) as ServiceAccountKey);
+  if (minter?.builtFrom !== serviceAccountKeyJson) {
+    minter = {
+      builtFrom: serviceAccountKeyJson,
+      value: new GoogleIdTokenMinter(JSON.parse(serviceAccountKeyJson) as ServiceAccountKey),
+    };
+  }
 
-  return minter;
+  return minter.value;
 }
 
-/** Kept for the same reason, and holding the same kind of thing: Google's keys, once fetched. */
-let verifier: GoogleUserTokenVerifier | undefined;
+/** Kept the same way, and holding the same kind of thing: Google's keys, once fetched. */
+let verifier: { readonly builtFrom: string; readonly value: GoogleUserTokenVerifier } | undefined;
 
 function verifierFor(clientId: string, hostedDomain: string): GoogleUserTokenVerifier {
-  verifier ??= new GoogleUserTokenVerifier(clientId, hostedDomain);
+  const builtFrom = `${clientId} ${hostedDomain}`;
 
-  return verifier;
+  if (verifier?.builtFrom !== builtFrom) {
+    verifier = { builtFrom, value: new GoogleUserTokenVerifier(clientId, hostedDomain) };
+  }
+
+  return verifier.value;
 }
 
 export default {
