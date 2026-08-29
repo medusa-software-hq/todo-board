@@ -83,4 +83,16 @@ export default {
     'react/rules-of-hooks': 'error',
     'react/jsx-key': 'error',
   },
+
+  overrides: [
+    {
+      files: ['**/*.test.ts'],
+      rules: {
+        // How Node's test runner is meant to be called: `describe` and `it` hand back promises the
+        // runner itself waits on, and a file that awaited them would be describing its tests inside
+        // the tests it already started.
+        'typescript/no-floating-promises': 'off',
+      },
+    },
+  ],
 } satisfies OxlintConfig;

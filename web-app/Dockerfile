@@ -18,12 +18,20 @@ RUN node .yarn/releases/yarn-4.14.1.cjs install --immutable
 COPY web-app/frontend/ ./
 COPY api/openapi/ /contract/
 
+# Which OAuth client this bundle signs people in with, and which domain it offers accounts from.
+# Baked in rather than fetched, so a bundle belongs to one environment and cannot be pointed at
+# another. Empty is the local case: no client, no sign-in, and no edge in front either.
+ARG VITE_GOOGLE_CLIENT_ID=""
+ARG VITE_GOOGLE_ALLOWED_DOMAIN=""
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_ALLOWED_DOMAIN=$VITE_GOOGLE_ALLOWED_DOMAIN
+
 RUN node .yarn/releases/yarn-4.14.1.cjs openapi-ts -i /contract/todo-board.yaml -o src/gen \
     && node scripts/exempt-generated.mjs \
     && node .yarn/releases/yarn-4.14.1.cjs vite build
 
 # Nothing of the build survives into the image that runs: the app is a directory of files and a
-# server that forwards `/api`.
+# server that hands them out.
 FROM caddy:2-alpine
 
 COPY web-app/Caddyfile /etc/caddy/Caddyfile

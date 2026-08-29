@@ -33,6 +33,14 @@ export const TdbApiErrorKinds = {
   network: 'network',
   incompatibility: 'incompatibility',
   internalServerError: 'internalServerError',
+
+  /**
+   * The edge would not take the token, on an operation that never promised a 401.
+   *
+   * Its own kind rather than an incompatibility: every operation can be refused this way, and it is
+   * the one failure the page can actually do something about.
+   */
+  unauthorized: 'unauthorized',
 } as const;
 
 export type TdbApiErrorKind = keyof typeof TdbApiErrorKinds;
@@ -58,8 +66,28 @@ type RawResult<DataT> = {
   response?: Response | undefined;
 };
 
-export function createTdbApiClient(baseUrl: string): TdbApiClient {
+/**
+ * A client for the API at [baseUrl], presenting whatever [bearerToken] answers at the time of each
+ * call.
+ *
+ * A function rather than a token, because a token outlives neither the hour nor the person: asking
+ * per call is what keeps a refreshed one from being a client that has to be rebuilt.
+ */
+export function createTdbApiClient(
+  baseUrl: string,
+  bearerToken: () => string | null,
+): TdbApiClient {
   const httpClient = createClient(createConfig({ baseUrl }));
+
+  httpClient.interceptors.request.use((request) => {
+    const token = bearerToken();
+
+    if (token !== null) {
+      request.headers.set('authorization', `Bearer ${token}`);
+    }
+
+    return request;
+  });
 
   /**
    * Wraps a call to the generated client.
@@ -97,6 +125,12 @@ export function createTdbApiClient(baseUrl: string): TdbApiClient {
 
       default: {
         const { status } = rawResponse;
+
+        if (status === StatusCodes.UNAUTHORIZED) {
+          console.warn(`${operation}: the token was not accepted`);
+
+          throw new TdbApiError(TdbApiErrorKinds.unauthorized);
+        }
 
         if (status >= StatusCodes.INTERNAL_SERVER_ERROR) {
           console.error(`${operation}: the server failed the request`, status);

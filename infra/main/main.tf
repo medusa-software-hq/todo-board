@@ -53,9 +53,17 @@ locals {
       # A letter rather than the word, so a derived name stays short enough to read at a glance:
       # `todo-board-p-1a2b`.
       environment_code = "p"
+
+      # The OAuth client this environment signs people in with, and the audience its tokens name.
+      # Written down rather than created here: an OAuth client is made through the console, which
+      # Terraform has no way to reach — `automaton` drives that console for us. The id is public;
+      # the secret it came with is unused, because a browser cannot keep one.
+      google_client_id = "835797084385-sjmhumf0tp97aj873an9pngje2jvchqr.apps.googleusercontent.com"
     }
     staging = {
       environment_code = "s"
+
+      google_client_id = "147866725365-ktjv9hddku493saogbnusp90237ju2n9.apps.googleusercontent.com"
     }
   }
 
@@ -64,6 +72,7 @@ locals {
   # There is no environment but these: a workspace that is not one of them has no code, and the
   # lookup failing is the whole of what needs to happen.
   environment_code = local.environments[local.environment].environment_code
+  google_client_id = local.environments[local.environment].google_client_id
 }
 
 # Providers

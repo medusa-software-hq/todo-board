@@ -1,17 +1,17 @@
 name: Deploy web app (per environment)
 
-# Deploying one already-built image to one environment. Called twice by `deploy-web-app`, with the same
-# `image_ref` both times.
+# Building and deploying the web app for one environment. Called twice by `deploy-web-app`.
+#
+# Built here rather than once upstream, and so built twice: the bundle bakes in the OAuth client it
+# signs people in with, and that client names the environment. Two environments, two clients, two
+# bundles — there is no one artifact to promote, and the promotion here is ordering and gating
+# rather than identity. Counter's web app is built the same way, for the same reason.
 
 on:
   workflow_call:
     inputs:
       environment:
-        description: The environment to deploy to.
-        required: true
-        type: string
-      image_ref:
-        description: The image to deploy. Built once, upstream.
+        description: The environment to build for and deploy to.
         required: true
         type: string
 
@@ -23,7 +23,7 @@ env:
 
 jobs:
   deploy:
-    name: Deploy to Cloud Run
+    name: Build & deploy
     runs-on: ubuntu-latest
 
     environment: ${{ inputs.environment }}
@@ -33,11 +33,37 @@ jobs:
       id-token: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3.0.0
         with:
           workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
           service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      # The environment is part of the tag: the registry is shared by both, and two bundles that
+      # differ cannot answer to one name.
+      - name: Resolve the image ref
+        id: image
+        run: |
+          echo "image_ref=${{ vars.GCP_AR_REPO_ENDPOINT }}/web:${{ github.sha }}-${{ inputs.environment }}" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_AR_REPO_HOSTNAME }} --quiet
+
+      - name: Build and push the image
+        # The context is the repository root: the frontend is built inside the image, from the same
+        # contract the service is generated from.
+        run: |
+          docker build \
+            -f web-app/Dockerfile \
+            --build-arg VITE_GOOGLE_CLIENT_ID="${{ vars.GOOGLE_CLIENT_ID }}" \
+            --build-arg VITE_GOOGLE_ALLOWED_DOMAIN="${{ vars.GOOGLE_ALLOWED_DOMAIN }}" \
+            -t "${{ steps.image.outputs.image_ref }}" \
+            .
+          docker push "${{ steps.image.outputs.image_ref }}"
 
       # `update`, not `deploy`: `gcloud run deploy` creates the service when it is absent, which
       # lets a deploy race ahead of the Terraform that owns it and bring one into being without the
@@ -48,7 +74,7 @@ jobs:
           gcloud run services update "${{ vars.GCP_WEB_RUN_SERVICE_NAME }}" \
             --project="${{ vars.GCP_PROJECT_ID }}" \
             --region="${{ vars.GCP_PRIMARY_LOCATION }}" \
-            --image="${{ inputs.image_ref }}" \
+            --image="${{ steps.image.outputs.image_ref }}" \
             --quiet
 
       - name: Report the service URL
@@ -61,5 +87,5 @@ jobs:
             echo "## Web app — ${{ inputs.environment }}"
             echo ""
             echo "- Service URL: [$service_url]($service_url)"
-            echo "- Image: \`${{ inputs.image_ref }}\`"
+            echo "- Image: \`${{ steps.image.outputs.image_ref }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

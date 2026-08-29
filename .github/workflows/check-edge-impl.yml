@@ -38,6 +38,9 @@ jobs:
       - name: Run `tsc`
         run: corepack yarn tsc --noEmit
 
+      - name: Run tests
+        run: node --experimental-transform-types --test "src/**/*.test.ts"
+
       # Catches a `wrangler.toml` that does not describe a deployable Worker, which nothing else
       # here would notice until a deploy failed.
       - name: Check the Worker builds

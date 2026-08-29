@@ -37,6 +37,15 @@ tasks:
     cmds:
       - corepack yarn tsc --noEmit
 
+  test:
+    desc: Test the package
+    deps: [install]
+    cmds:
+      # `--experimental-transform-types` rather than plain stripping: the verifier declares its
+      # dependencies as constructor parameters, which is TypeScript that has to be compiled away
+      # rather than crossed out.
+      - node --experimental-transform-types --test "src/**/*.test.ts"
+
   dev:
     desc: Run the edge locally, forwarding to a target of your choosing
     deps: [install]
